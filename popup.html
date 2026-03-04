@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Paste</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div class="top-actions">
+        <button id="openProjectBtn" class="open-project-btn" type="button">打开当前项目</button>
+      </div>
+      <input id="searchInput" type="text" placeholder="搜索剪贴内容..." autocomplete="off" />
+      <div id="list"></div>
+      <div id="toast" aria-live="polite"></div>
+    </div>
+    <script src="config.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

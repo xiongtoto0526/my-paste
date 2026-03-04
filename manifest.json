@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "My Paste",
+  "description": "按网站分组记录网页复制文本",
+  "version": "1.0.0",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "My Paste",
+    "default_popup": "popup.html"
+  }
+}
