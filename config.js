@@ -2,7 +2,7 @@ window.APP_CONFIG = {
   quickActions: {
     openProject: {
       enabled: true,
-      label: '打开当前项目',
+      label: '打开项目',
       path: '/Users/xmaster/Documents/code/vibe/my-paste'
     }
   },

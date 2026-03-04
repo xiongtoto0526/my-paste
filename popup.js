@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'records'
+const NOTE_STORAGE_KEY = 'notes'
 const TAG_COLORS = {
 	slate: 'tag-slate',
 	blue: 'tag-blue',
@@ -29,14 +30,35 @@ const DEFAULT_CONFIG = {
 
 const state = {
 	recordsByDomain: {},
+	notes: [],
 	query: '',
+	activeTab: 'clipboard',
+	editingNoteId: '',
 	config: DEFAULT_CONFIG
 }
 
+const tabClipboard = document.getElementById('tabClipboard')
+const tabNotes = document.getElementById('tabNotes')
+const panelClipboard = document.getElementById('panelClipboard')
+const panelNotes = document.getElementById('panelNotes')
 const searchInput = document.getElementById('searchInput')
 const listElement = document.getElementById('list')
+const noteInput = document.getElementById('noteInput')
+const addNoteBtn = document.getElementById('addNoteBtn')
+const noteListElement = document.getElementById('noteList')
 const toastElement = document.getElementById('toast')
+const openStandaloneBtn = document.getElementById('openStandaloneBtn')
+const exportDataBtn = document.getElementById('exportDataBtn')
 const openProjectBtn = document.getElementById('openProjectBtn')
+
+function getQueryParam(name) {
+	const params = new URLSearchParams(window.location.search)
+	return params.get(name) || ''
+}
+
+function isStandaloneView() {
+	return getQueryParam('mode') === 'tab'
+}
 
 function escapeHtml(text) {
 	return text
@@ -66,6 +88,42 @@ function showToast(message) {
 			toastElement.textContent = ''
 		}
 	}, 1400)
+}
+
+function formatExportTimestamp(date) {
+	const year = String(date.getFullYear())
+	const month = String(date.getMonth() + 1).padStart(2, '0')
+	const day = String(date.getDate()).padStart(2, '0')
+	const hour = String(date.getHours()).padStart(2, '0')
+	const minute = String(date.getMinutes()).padStart(2, '0')
+	const second = String(date.getSeconds()).padStart(2, '0')
+
+	return `${year}${month}${day}-${hour}${minute}${second}`
+}
+
+function triggerDownload(filename, content) {
+	const blob = new Blob([content], { type: 'application/json;charset=utf-8' })
+	const objectUrl = URL.createObjectURL(blob)
+	const anchor = document.createElement('a')
+	anchor.href = objectUrl
+	anchor.download = filename
+	document.body.appendChild(anchor)
+	anchor.click()
+	anchor.remove()
+	URL.revokeObjectURL(objectUrl)
+}
+
+async function exportAllData() {
+	const data = await chrome.storage.local.get([STORAGE_KEY, NOTE_STORAGE_KEY])
+	const payload = {
+		exportedAt: new Date().toISOString(),
+		records: normalizeRecordsByDomain(data[STORAGE_KEY] || state.recordsByDomain),
+		notes: normalizeNotes(data[NOTE_STORAGE_KEY] || state.notes)
+	}
+	const json = JSON.stringify(payload, null, 2)
+	const filename = `my-paste-export-${formatExportTimestamp(new Date())}.json`
+
+	triggerDownload(filename, json)
 }
 
 function normalizeTagColor(color) {
@@ -160,6 +218,24 @@ function toVscodeFileUrl(path) {
 }
 
 function setupQuickActions() {
+	if (openStandaloneBtn) {
+		if (isStandaloneView()) {
+			openStandaloneBtn.style.display = 'none'
+		} else {
+			openStandaloneBtn.style.display = 'inline-flex'
+			openStandaloneBtn.addEventListener('click', () => {
+				const baseUrl = chrome.runtime.getURL('popup.html')
+				const targetUrl = `${baseUrl}?mode=tab&tab=${encodeURIComponent(state.activeTab)}`
+
+				if (chrome.tabs && typeof chrome.tabs.create === 'function') {
+					chrome.tabs.create({ url: targetUrl })
+				} else {
+					window.open(targetUrl, '_blank')
+				}
+			})
+		}
+	}
+
 	if (!openProjectBtn) {
 		return
 	}
@@ -245,6 +321,36 @@ async function persistRecords() {
 	await chrome.storage.local.set({ [STORAGE_KEY]: state.recordsByDomain })
 }
 
+function normalizeNotes(notes) {
+	if (!Array.isArray(notes)) {
+		return []
+	}
+
+	return notes
+		.filter((note) => note && typeof note === 'object')
+		.map((note) => {
+			const content = typeof note.content === 'string' ? note.content.trim() : ''
+			const createdAt = Number.isFinite(note.createdAt) ? note.createdAt : Date.now()
+
+			return {
+				id: typeof note.id === 'string' && note.id ? note.id : `${createdAt}-${Math.random().toString(36).slice(2, 8)}`,
+				content,
+				createdAt
+			}
+		})
+		.filter((note) => note.content)
+		.sort((a, b) => b.createdAt - a.createdAt)
+}
+
+async function loadNotes() {
+	const data = await chrome.storage.local.get(NOTE_STORAGE_KEY)
+	state.notes = normalizeNotes(data[NOTE_STORAGE_KEY])
+}
+
+async function persistNotes() {
+	await chrome.storage.local.set({ [NOTE_STORAGE_KEY]: state.notes })
+}
+
 function getFilteredGroups() {
 	const pinnedDomains = state.config.sort.pinnedDomains
 	const hiddenDomains = state.config.filter.hiddenDomains
@@ -306,7 +412,7 @@ function render() {
 								<span class="content">${preview}</span>
 								<span class="meta">${meta}</span>
 							</button>
-							<button class="delete-btn" data-action="delete" data-id="${record.id}" data-domain="${group.domain}">删除</button>
+							<button class="delete-btn" data-action="delete" data-id="${record.id}" data-domain="${group.domain}" aria-label="删除记录" title="删除记录">×</button>
 						</li>
 					`
 				})
@@ -325,6 +431,258 @@ function render() {
 		.join('')
 
 	listElement.innerHTML = html
+}
+
+function renderNotes() {
+	if (!noteListElement) {
+		return
+	}
+
+	if (state.notes.length === 0) {
+		noteListElement.innerHTML = '<li class="empty note-empty">暂无便签</li>'
+		return
+	}
+
+	noteListElement.innerHTML = state.notes
+		.map((note) => {
+			const content = escapeHtml(note.content)
+			const time = escapeHtml(formatTime(note.createdAt))
+			const isEditing = state.editingNoteId === note.id
+
+			return `
+				<li class="note-item" data-note-id="${note.id}">
+					<div class="note-row">
+						${
+							isEditing
+								? `<input class="note-edit-input" type="text" value="${content}" data-note-action="edit-input" data-note-id="${note.id}" autocomplete="off" />`
+								: `<button class="note-content-btn" type="button" data-note-action="edit" data-note-id="${note.id}">${content}</button>`
+						}
+						<button class="note-delete-btn" type="button" data-note-action="delete" data-note-id="${note.id}" aria-label="删除便签" title="删除便签">×</button>
+					</div>
+					<span class="note-time">${time}</span>
+				</li>
+			`
+		})
+		.join('')
+
+	if (state.editingNoteId) {
+		requestAnimationFrame(() => {
+			const input = noteListElement.querySelector(`.note-edit-input[data-note-id="${state.editingNoteId}"]`)
+			if (!(input instanceof HTMLInputElement)) {
+				return
+			}
+
+			input.focus()
+			input.select()
+		})
+	}
+}
+
+function findNoteIndex(noteId) {
+	return state.notes.findIndex((note) => note.id === noteId)
+}
+
+function startEditingNote(noteId) {
+	if (!noteId) {
+		return
+	}
+
+	const index = findNoteIndex(noteId)
+	if (index < 0) {
+		return
+	}
+
+	state.editingNoteId = noteId
+	renderNotes()
+}
+
+async function saveEditingNote(noteId, rawContent) {
+	if (!noteId) {
+		return
+	}
+
+	const index = findNoteIndex(noteId)
+	if (index < 0) {
+		state.editingNoteId = ''
+		renderNotes()
+		return
+	}
+
+	const nextContent = rawContent.trim()
+	if (!nextContent) {
+		showToast('便签内容不能为空')
+		renderNotes()
+		return
+	}
+
+	const current = state.notes[index]
+	state.editingNoteId = ''
+
+	if (current.content === nextContent) {
+		renderNotes()
+		return
+	}
+
+	state.notes[index] = {
+		...current,
+		content: nextContent
+	}
+
+	await persistNotes()
+	renderNotes()
+	showToast('便签已更新')
+}
+
+function cancelEditingNote() {
+	if (!state.editingNoteId) {
+		return
+	}
+
+	state.editingNoteId = ''
+	renderNotes()
+}
+
+async function deleteNote(noteId) {
+	const nextNotes = state.notes.filter((note) => note.id !== noteId)
+	if (nextNotes.length === state.notes.length) {
+		return
+	}
+
+	state.notes = nextNotes
+	if (state.editingNoteId === noteId) {
+		state.editingNoteId = ''
+	}
+
+	await persistNotes()
+	renderNotes()
+	showToast('便签已删除')
+}
+
+async function onNoteListClick(event) {
+	const target = event.target
+	if (!(target instanceof HTMLElement)) {
+		return
+	}
+
+	const actionTarget = target.closest('[data-note-action]')
+	if (!(actionTarget instanceof HTMLElement)) {
+		return
+	}
+
+	const action = actionTarget.dataset.noteAction
+	const noteId = actionTarget.dataset.noteId
+	if (!noteId) {
+		return
+	}
+
+	if (action === 'delete') {
+		await deleteNote(noteId)
+		return
+	}
+
+	if (action === 'edit') {
+		startEditingNote(noteId)
+	}
+}
+
+async function onNoteListKeydown(event) {
+	const target = event.target
+	if (!(target instanceof HTMLInputElement) || !target.classList.contains('note-edit-input')) {
+		return
+	}
+
+	const noteId = target.dataset.noteId || ''
+	if (!noteId) {
+		return
+	}
+
+	if (event.key === 'Escape') {
+		event.preventDefault()
+		cancelEditingNote()
+		return
+	}
+
+	if (event.key === 'Enter') {
+		event.preventDefault()
+		await saveEditingNote(noteId, target.value)
+	}
+}
+
+async function onNoteListFocusOut(event) {
+	const target = event.target
+	if (!(target instanceof HTMLInputElement) || !target.classList.contains('note-edit-input')) {
+		return
+	}
+
+	const noteId = target.dataset.noteId || ''
+	if (!noteId || state.editingNoteId !== noteId) {
+		return
+	}
+
+	await saveEditingNote(noteId, target.value)
+}
+
+function setActiveTab(nextTab) {
+	state.activeTab = nextTab === 'notes' ? 'notes' : 'clipboard'
+
+	const isClipboard = state.activeTab === 'clipboard'
+
+	if (tabClipboard) {
+		tabClipboard.classList.toggle('active', isClipboard)
+		tabClipboard.setAttribute('aria-selected', isClipboard ? 'true' : 'false')
+	}
+
+	if (tabNotes) {
+		tabNotes.classList.toggle('active', !isClipboard)
+		tabNotes.setAttribute('aria-selected', !isClipboard ? 'true' : 'false')
+	}
+
+	if (panelClipboard) {
+		panelClipboard.classList.toggle('active', isClipboard)
+		panelClipboard.hidden = !isClipboard
+	}
+
+	if (panelNotes) {
+		panelNotes.classList.toggle('active', !isClipboard)
+		panelNotes.hidden = isClipboard
+	}
+}
+
+function setupTabs() {
+	const queryTab = getQueryParam('tab')
+	const initialTab = queryTab === 'notes' ? 'notes' : 'clipboard'
+
+	if (tabClipboard) {
+		tabClipboard.addEventListener('click', () => setActiveTab('clipboard'))
+	}
+
+	if (tabNotes) {
+		tabNotes.addEventListener('click', () => setActiveTab('notes'))
+	}
+
+	setActiveTab(initialTab)
+}
+
+async function submitNote() {
+	if (!(noteInput instanceof HTMLInputElement)) {
+		return
+	}
+
+	const content = noteInput.value.trim()
+	if (!content) {
+		return
+	}
+
+	state.notes.unshift({
+		id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+		content,
+		createdAt: Date.now()
+	})
+
+	await persistNotes()
+	renderNotes()
+	noteInput.value = ''
+	showToast('便签已添加')
 }
 
 async function copyText(content) {
@@ -395,10 +753,17 @@ async function onListClick(event) {
 }
 
 async function init() {
+	if (isStandaloneView()) {
+		document.body.classList.add('standalone-view')
+	}
+
 	state.config = getConfig()
 	setupQuickActions()
+	setupTabs()
 	await loadRecords()
+	await loadNotes()
 	render()
+	renderNotes()
 
 	const onSearchInput = debounce((event) => {
 		const target = event.target
@@ -412,6 +777,47 @@ async function init() {
 
 	searchInput.addEventListener('input', onSearchInput)
 	listElement.addEventListener('click', onListClick)
+	addNoteBtn.addEventListener('click', () => {
+		submitNote().catch(() => {
+			showToast('保存便签失败，请重试')
+		})
+	})
+	if (exportDataBtn) {
+		exportDataBtn.addEventListener('click', () => {
+			exportAllData()
+				.then(() => {
+					showToast('数据已导出')
+				})
+				.catch(() => {
+					showToast('导出失败，请重试')
+				})
+		})
+	}
+	noteListElement.addEventListener('click', (event) => {
+		onNoteListClick(event).catch(() => {
+			showToast('操作失败，请重试')
+		})
+	})
+	noteListElement.addEventListener('keydown', (event) => {
+		onNoteListKeydown(event).catch(() => {
+			showToast('保存便签失败，请重试')
+		})
+	})
+	noteListElement.addEventListener('focusout', (event) => {
+		onNoteListFocusOut(event).catch(() => {
+			showToast('保存便签失败，请重试')
+		})
+	})
+	noteInput.addEventListener('keydown', (event) => {
+		if (event.key !== 'Enter') {
+			return
+		}
+
+		event.preventDefault()
+		submitNote().catch(() => {
+			showToast('保存便签失败，请重试')
+		})
+	})
 }
 
 init().catch((error) => {
