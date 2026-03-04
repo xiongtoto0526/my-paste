@@ -292,6 +292,11 @@ body.standalone-view #app {
   align-items: start;
 }
 
+.note-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
 .note-content-btn {
   border: none;
   background: transparent;
@@ -301,7 +306,7 @@ body.standalone-view #app {
   cursor: text;
 }
 
-.note-delete-btn {
+.note-action-btn {
   width: 24px;
   height: 24px;
   border: 1px solid #d1d5db;
@@ -320,11 +325,53 @@ body.standalone-view #app {
   transition: opacity 0.15s ease;
 }
 
-.note-item:hover .note-delete-btn,
-.note-item:focus-within .note-delete-btn {
+.note-item:hover .note-action-btn,
+.note-item:focus-within .note-action-btn {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
+}
+
+.note-reminder-panel {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+}
+
+.note-reminder-input {
+  height: 28px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0 8px;
+  font-size: 13px;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.note-reminder-input:focus {
+  border-color: #2563eb;
+}
+
+.note-reminder-unit {
+  height: 28px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0 6px;
+  font-size: 12px;
+  background: #fff;
+  color: #374151;
+}
+
+.note-reminder-save-btn {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  border-radius: 6px;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .note-edit-input {
@@ -362,6 +409,38 @@ body.standalone-view #app {
   margin-top: 6px;
   font-size: 11px;
   color: #6b7280;
+}
+
+.note-meta-row {
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.note-reminder-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.note-reminder-badge-fired {
+  color: #166534;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.note-reminder-badge-expired {
+  color: #92400e;
+  background: #fffbeb;
+  border-color: #fde68a;
 }
 
 .content {

@@ -3,7 +3,7 @@
   "name": "My Paste",
   "description": "按网站分组记录网页复制文本",
   "version": "1.0.0",
-  "permissions": ["storage", "activeTab"],
+  "permissions": ["storage", "activeTab", "alarms", "notifications"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
