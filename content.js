@@ -2,6 +2,12 @@ const MAX_CONTENT_LENGTH = 5000
 const MESSAGE_TYPE = 'MY_CLIPBOARD_RECORD'
 const STORAGE_KEY = 'records'
 const DOMAIN_LIMIT = 100
+const DEDUP_WINDOW_MS = 300
+const KEYBOARD_COPY_DELAY_MS = 80
+
+let lastRecordSignature = ''
+let lastRecordTime = 0
+let keyboardCopyTimer = null
 
 function isPasswordTarget(target) {
 	if (!(target instanceof Element)) {
@@ -47,6 +53,16 @@ function getCopiedText(event) {
 	return getSelectedTextFromEditable(event.target)
 }
 
+function getCopiedTextFallback() {
+	const selectedText = window.getSelection ? window.getSelection().toString() : ''
+	if (selectedText.trim()) {
+		return selectedText
+	}
+
+	const activeElement = document.activeElement
+	return getSelectedTextFromEditable(activeElement)
+}
+
 function createId() {
 	if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
 		return crypto.randomUUID()
@@ -76,7 +92,43 @@ async function saveRecordDirectly(payload) {
 	await chrome.storage.local.set({ [STORAGE_KEY]: recordsByDomain })
 }
 
-document.addEventListener('copy', (event) => {
+function shouldSkipDuplicate(content) {
+	const now = Date.now()
+	const signature = `${window.location.href}::${content}`
+
+	if (signature === lastRecordSignature && now - lastRecordTime < DEDUP_WINDOW_MS) {
+		return true
+	}
+
+	lastRecordSignature = signature
+	lastRecordTime = now
+	return false
+}
+
+function dispatchPayload(payload) {
+	try {
+		if (!chrome?.runtime?.id || typeof chrome.runtime.sendMessage !== 'function') {
+			return
+		}
+
+		chrome.runtime.sendMessage(payload, async () => {
+			try {
+				if (!chrome.runtime.lastError) {
+					return
+				}
+
+				try {
+					await saveRecordDirectly(payload)
+				} catch (_error) {
+				}
+			} catch (_error) {
+			}
+		})
+	} catch (_error) {
+	}
+}
+
+function onCopy(event) {
 	if (isPasswordTarget(event.target)) {
 		return
 	}
@@ -88,6 +140,10 @@ document.addEventListener('copy', (event) => {
 		return
 	}
 
+	if (shouldSkipDuplicate(content)) {
+		return
+	}
+
 	const payload = {
 		type: MESSAGE_TYPE,
 		content: content.slice(0, MAX_CONTENT_LENGTH),
@@ -96,12 +152,36 @@ document.addEventListener('copy', (event) => {
 		createdAt: Date.now()
 	}
 
-	chrome.runtime.sendMessage(payload, async () => {
-		if (chrome.runtime.lastError) {
-			try {
-				await saveRecordDirectly(payload)
-			} catch (_error) {
-			}
+	dispatchPayload(payload)
+}
+
+window.addEventListener('copy', onCopy, true)
+
+function onKeyboardCopy(event) {
+	if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'c') {
+		return
+	}
+
+	if (keyboardCopyTimer) {
+		clearTimeout(keyboardCopyTimer)
+	}
+
+	keyboardCopyTimer = setTimeout(() => {
+		const content = getCopiedTextFallback().trim()
+		if (!content || shouldSkipDuplicate(content)) {
+			return
 		}
-	})
-})
+
+		const payload = {
+			type: MESSAGE_TYPE,
+			content: content.slice(0, MAX_CONTENT_LENGTH),
+			url: window.location.href,
+			domain: window.location.host || window.location.hostname,
+			createdAt: Date.now()
+		}
+
+		dispatchPayload(payload)
+	}, KEYBOARD_COPY_DELAY_MS)
+}
+
+window.addEventListener('keydown', onKeyboardCopy, true)
