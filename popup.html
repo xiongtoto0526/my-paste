@@ -19,6 +19,14 @@
           <button id="exportDataBtn" class="open-project-btn" type="button">导出数据</button>
           <button id="openProjectBtn" class="open-project-btn" type="button">打开项目</button>
         </div>
+        <div id="aiRadarCard" class="ai-radar-card" aria-live="polite">
+          <div class="ai-radar-header">
+            <strong>AI 雷达</strong>
+            <button id="aiRadarCheckNowBtn" class="ai-radar-check-btn" type="button">立即检查</button>
+          </div>
+          <div id="aiRadarSummary" class="ai-radar-summary">加载中...</div>
+          <div id="aiRadarSources" class="ai-radar-sources"></div>
+        </div>
         <input id="searchInput" type="text" placeholder="搜索剪贴内容..." autocomplete="off" />
         <div id="list"></div>
       </section>

@@ -51,6 +51,16 @@ My Paste 是一个本地 Chrome 扩展，用于：
 	- macOS: `Command+Shift+Y`
 	- Windows/Linux: `Ctrl+Shift+Y`
 
+### 2.6 AI 雷达（更新订阅）
+
+- 支持定时轮询 AI 产品 RSS 更新（默认 30 分钟）
+- 首期内置 Copilot 源：`https://github.blog/changelog/label/copilot/feed/`
+- 内置 Gemini 源（HTML 监控）：`https://ai.google.dev/gemini-api/docs/changelog`
+- 支持扩展源配置（Cursor / Claude AI / Google Gemini）
+- 检测到新条目后发送系统通知（去重，避免重复通知同一条）
+- Popup 提供雷达状态展示与“立即检查”按钮
+- Popup 支持点击源标签跳转到对应更新页面（如 Copilot/Gemini）
+
 ---
 
 ## 3. Popup 信息架构
@@ -85,6 +95,8 @@ My Paste 是一个本地 Chrome 扩展，用于：
 - `records`: 剪贴板记录（按域名分组）
 - `notes`: 便签列表
 - `noteReminders`: 提醒任务映射（以 alarmName 为 key）
+- `aiRadarConfig`: AI 雷达配置（轮询间隔、源列表）
+- `aiRadarState`: AI 雷达状态（每个源最近检查/最近条目/错误）
 
 ## 4.2 records
 
@@ -130,6 +142,52 @@ type ReminderMap = {
 }
 ```
 
+## 4.5 aiRadarConfig
+
+```ts
+type AiRadarConfig = {
+	enabled: boolean
+	intervalMinutes: number
+	sources: Array<{
+		id: string
+		name: string
+		type: 'rss' | 'html'
+		feedUrl?: string
+		pageUrl?: string
+		enabled: boolean
+	}>
+}
+```
+
+约束：
+
+- `intervalMinutes` 最小 5，最大 720
+- 源 `id` 必须唯一（建议使用小写）
+- `type='rss'` 时使用 `feedUrl` 轮询
+- `type='html'` 时使用 `pageUrl` 轮询
+- `pageUrl` 可用于 Popup 标签点击跳转（若缺失则回退使用 `feedUrl`）
+- 缺少对应 URL 的源不会参与轮询
+
+## 4.6 aiRadarState
+
+```ts
+type AiRadarState = {
+	sources: {
+		[sourceId: string]: {
+			lastSeenId?: string
+			lastSeenTitle?: string
+			lastSeenLink?: string
+			lastPublishedAt?: string
+			lastCheckedAt?: number
+			lastNotifiedAt?: number
+			lastError?: string
+		}
+	}
+	lastCheckedAt?: number
+	updatedAt?: number
+}
+```
+
 ---
 
 ## 5. 通知与提醒机制
@@ -150,6 +208,21 @@ type ReminderMap = {
 - `pending + triggerAt > now`：显示 `剩余 xx`
 - `fired`：显示 `已提醒`
 - `pending 且 triggerAt <= now`：显示 `已过期`
+
+### 5.1 AI 雷达通知机制
+
+- background 注册周期任务：`ai-radar-poll`
+- 周期触发后按配置拉取每个已启用源（支持 RSS/HTML）
+- 若最新条目 `id` 与该源 `lastSeenId` 不同，则判定为新更新：
+	- 更新 `aiRadarState.sources[sourceId]`
+	- 调用 `chrome.notifications.create` 发送通知
+- Popup 点击“立即检查”通过 `runtime message` 触发同一检查逻辑
+- 拉取或解析失败时记录 `lastError`，不会中断其他源检查
+
+去重规则：
+
+- 首次检查仅写入 `lastSeenId`，不通知
+- 后续仅在 `lastSeenId` 变化时通知
 
 ---
 
@@ -212,3 +285,13 @@ type ReminderMap = {
 - [x] 导出 JSON
 - [x] 新标签页独立打开
 - [x] 快捷键唤起扩展
+- [x] AI 雷达定时检查 Copilot 更新并通知
+- [x] Popup 展示 AI 雷达状态并支持立即检查
+
+---
+
+## 11. 兼容性说明
+
+- 旧行为：扩展仅支持剪贴板记录与便签提醒。
+- 新行为：在保留原有行为的前提下，新增 AI 雷达定时检查与通知。
+- 若 `aiRadarConfig.enabled=false`，雷达任务关闭，行为回退为旧版本（无 AI 雷达）。

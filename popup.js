@@ -1,8 +1,12 @@
 const STORAGE_KEY = 'records'
 const NOTE_STORAGE_KEY = 'notes'
 const REMINDER_STORAGE_KEY = 'noteReminders'
+const AI_RADAR_CONFIG_KEY = 'aiRadarConfig'
+const AI_RADAR_STATE_KEY = 'aiRadarState'
 const REMINDER_ALARM_PREFIX = 'note-reminder-'
 const CREATE_REMINDER_MESSAGE_TYPE = 'MY_PASTE_CREATE_REMINDER'
+const CHECK_AI_RADAR_NOW_MESSAGE_TYPE = 'MY_PASTE_AI_RADAR_CHECK_NOW'
+const UPDATE_AI_RADAR_CONFIG_MESSAGE_TYPE = 'MY_PASTE_AI_RADAR_UPDATE_CONFIG'
 const TAG_COLORS = {
 	slate: 'tag-slate',
 	blue: 'tag-blue',
@@ -28,6 +32,41 @@ const DEFAULT_CONFIG = {
 	},
 	tags: {
 		domainTags: {}
+	},
+	aiRadar: {
+		enabled: true,
+		intervalMinutes: 30,
+		sources: [
+			{
+				id: 'copilot',
+				name: 'GitHub Copilot',
+					type: 'rss',
+				feedUrl: 'https://github.blog/changelog/label/copilot/feed/',
+					pageUrl: 'https://github.blog/changelog/label/copilot',
+				enabled: true
+			},
+			{
+				id: 'cursor',
+				name: 'Cursor',
+					type: 'rss',
+				feedUrl: '',
+				enabled: false
+			},
+			{
+				id: 'claude',
+				name: 'Claude AI',
+					type: 'rss',
+				feedUrl: '',
+				enabled: false
+			},
+			{
+				id: 'gemini',
+				name: 'Google Gemini',
+					type: 'html',
+					pageUrl: 'https://ai.google.dev/gemini-api/docs/changelog',
+					enabled: true
+			}
+		]
 	}
 }
 
@@ -41,6 +80,11 @@ const state = {
 	reminderUnitByNote: {},
 	reminderMetaByNote: {},
 	reminderAtByNote: {},
+	aiRadarState: {
+		sources: {},
+		updatedAt: 0,
+		lastCheckedAt: 0
+	},
 	config: DEFAULT_CONFIG
 }
 
@@ -59,6 +103,9 @@ const toastElement = document.getElementById('toast')
 const openStandaloneBtn = document.getElementById('openStandaloneBtn')
 const exportDataBtn = document.getElementById('exportDataBtn')
 const openProjectBtn = document.getElementById('openProjectBtn')
+const aiRadarSummaryElement = document.getElementById('aiRadarSummary')
+const aiRadarSourcesElement = document.getElementById('aiRadarSources')
+const aiRadarCheckNowBtn = document.getElementById('aiRadarCheckNowBtn')
 
 function getQueryParam(name) {
 	const params = new URLSearchParams(window.location.search)
@@ -80,6 +127,10 @@ function escapeHtml(text) {
 
 function formatTime(timestamp) {
 	return new Date(timestamp).toLocaleString()
+}
+
+function formatTimeOrFallback(timestamp, fallback = '未检查') {
+	return Number.isFinite(timestamp) && timestamp > 0 ? formatTime(timestamp) : fallback
 }
 
 function debounce(fn, wait) {
@@ -206,6 +257,79 @@ function normalizeDomainTags(rawDomainTags) {
 	return normalized
 }
 
+function normalizeAiRadarSources(rawSources) {
+	const inputSources = Array.isArray(rawSources) ? rawSources : DEFAULT_CONFIG.aiRadar.sources
+	return inputSources
+		.map((source) => {
+			if (!source || typeof source !== 'object') {
+				return null
+			}
+
+			const id = typeof source.id === 'string' ? source.id.trim().toLowerCase() : ''
+			if (!id) {
+				return null
+			}
+
+			return {
+				id,
+				name: typeof source.name === 'string' && source.name.trim() ? source.name.trim() : id,
+					type: source.type === 'html' ? 'html' : 'rss',
+				feedUrl: typeof source.feedUrl === 'string' ? source.feedUrl.trim() : '',
+					pageUrl: typeof source.pageUrl === 'string' ? source.pageUrl.trim() : '',
+				enabled: Boolean(source.enabled)
+			}
+		})
+		.filter(Boolean)
+}
+
+function getAiRadarSourceTargetUrl(source) {
+	if (!source || typeof source !== 'object') {
+		return ''
+	}
+
+	const pageUrl = typeof source.pageUrl === 'string' ? source.pageUrl.trim() : ''
+	if (pageUrl) {
+		return pageUrl
+	}
+
+	const feedUrl = typeof source.feedUrl === 'string' ? source.feedUrl.trim() : ''
+	if (!feedUrl) {
+		return ''
+	}
+
+	return feedUrl.replace(/\/feed\/?$/i, '')
+}
+
+function openAiRadarSource(url) {
+	if (!url) {
+		showToast('未配置跳转地址')
+		return
+	}
+
+	if (chrome.tabs && typeof chrome.tabs.create === 'function') {
+		chrome.tabs.create({ url })
+		return
+	}
+
+	window.open(url, '_blank')
+}
+
+function onAiRadarSourceClick(event) {
+	const target = event.target
+	if (!(target instanceof HTMLElement)) {
+		return
+	}
+
+	const sourceElement = target.closest('[data-ai-radar-url]')
+	if (!(sourceElement instanceof HTMLElement)) {
+		return
+	}
+
+	event.preventDefault()
+	const url = sourceElement.dataset.aiRadarUrl || ''
+	openAiRadarSource(url)
+}
+
 function getConfig() {
 	const globalConfig = window.APP_CONFIG || {}
 	const openProjectEnabled = Boolean(globalConfig?.quickActions?.openProject?.enabled)
@@ -225,6 +349,15 @@ function getConfig() {
 		? globalConfig.filter.hiddenDomains.filter((item) => typeof item === 'string' && item.trim())
 		: []
 	const domainTags = normalizeDomainTags(globalConfig?.tags?.domainTags)
+	const aiRadarEnabled =
+		typeof globalConfig?.aiRadar?.enabled === 'boolean'
+			? globalConfig.aiRadar.enabled
+			: DEFAULT_CONFIG.aiRadar.enabled
+	const aiRadarIntervalInput = Number.parseInt(globalConfig?.aiRadar?.intervalMinutes, 10)
+	const aiRadarIntervalMinutes = Number.isFinite(aiRadarIntervalInput)
+		? Math.min(720, Math.max(5, aiRadarIntervalInput))
+		: DEFAULT_CONFIG.aiRadar.intervalMinutes
+	const aiRadarSources = normalizeAiRadarSources(globalConfig?.aiRadar?.sources)
 
 	return {
 		quickActions: {
@@ -242,6 +375,114 @@ function getConfig() {
 		},
 		tags: {
 			domainTags
+		},
+		aiRadar: {
+			enabled: aiRadarEnabled,
+			intervalMinutes: aiRadarIntervalMinutes,
+			sources: aiRadarSources
+		}
+	}
+}
+
+function renderAiRadarStatus() {
+	if (!(aiRadarSummaryElement instanceof HTMLElement) || !(aiRadarSourcesElement instanceof HTMLElement)) {
+		return
+	}
+
+	const radarConfig = state.config.aiRadar
+	if (!radarConfig.enabled) {
+		aiRadarSummaryElement.textContent = '已关闭'
+		aiRadarSourcesElement.innerHTML = ''
+		return
+	}
+
+	const sourceStateMap = state.aiRadarState?.sources && typeof state.aiRadarState.sources === 'object' ? state.aiRadarState.sources : {}
+	const latestCheckedAt = Object.values(sourceStateMap).reduce((max, sourceState) => {
+		const value = Number.isFinite(sourceState?.lastCheckedAt) ? sourceState.lastCheckedAt : 0
+		return Math.max(max, value)
+	}, 0)
+
+	aiRadarSummaryElement.textContent = `间隔 ${radarConfig.intervalMinutes} 分钟，最近检查：${formatTimeOrFallback(latestCheckedAt)}`
+
+	const sourceItems = radarConfig.sources
+		.filter((source) => source.enabled)
+		.map((source) => {
+			const sourceState = sourceStateMap[source.id] || {}
+				const sourceTargetUrl = getAiRadarSourceTargetUrl(source)
+			const hasError = typeof sourceState.lastError === 'string' && sourceState.lastError.trim()
+			const title = hasError
+				? `${source.name}: 失败`
+				: sourceState.lastSeenTitle
+					? `${source.name}: ${sourceState.lastSeenTitle}`
+					: `${source.name}: 暂无记录`
+			const className = hasError ? 'ai-radar-source-item error' : 'ai-radar-source-item'
+				const safeUrl = escapeHtml(sourceTargetUrl)
+				return `<button type="button" class="${className}" data-ai-radar-url="${safeUrl}" title="${escapeHtml(title)}">${escapeHtml(source.name)}</button>`
+		})
+
+	aiRadarSourcesElement.innerHTML = sourceItems.length > 0 ? sourceItems.join('') : '<span class="ai-radar-source-item">暂无启用源</span>'
+}
+
+async function loadAiRadarState() {
+	const data = await chrome.storage.local.get(AI_RADAR_STATE_KEY)
+	const radarState = data[AI_RADAR_STATE_KEY]
+	state.aiRadarState = radarState && typeof radarState === 'object'
+		? {
+			sources: radarState.sources && typeof radarState.sources === 'object' ? radarState.sources : {},
+			updatedAt: Number.isFinite(radarState.updatedAt) ? radarState.updatedAt : 0,
+			lastCheckedAt: Number.isFinite(radarState.lastCheckedAt) ? radarState.lastCheckedAt : 0
+		}
+		: {
+			sources: {},
+			updatedAt: 0,
+			lastCheckedAt: 0
+		}
+}
+
+async function syncAiRadarConfig() {
+	if (typeof chrome.runtime?.sendMessage !== 'function') {
+		return
+	}
+
+	try {
+		await chrome.runtime.sendMessage({
+			type: UPDATE_AI_RADAR_CONFIG_MESSAGE_TYPE,
+			config: state.config.aiRadar
+		})
+	} catch (error) {
+		console.error('[MyPaste] sync ai radar config failed', error)
+	}
+}
+
+async function checkAiRadarNow() {
+	if (typeof chrome.runtime?.sendMessage !== 'function') {
+		showToast('当前环境不支持立即检查')
+		return
+	}
+
+	if (aiRadarCheckNowBtn instanceof HTMLButtonElement) {
+		aiRadarCheckNowBtn.disabled = true
+		aiRadarCheckNowBtn.textContent = '检查中...'
+	}
+
+	try {
+		const result = await chrome.runtime.sendMessage({
+			type: CHECK_AI_RADAR_NOW_MESSAGE_TYPE
+		})
+
+		if (result?.ok === false) {
+			throw new Error(result.error || 'AI 雷达检查失败')
+		}
+
+		await loadAiRadarState()
+		renderAiRadarStatus()
+		showToast('AI 雷达检查完成')
+	} catch (error) {
+		showErrorToast(`AI 雷达检查失败：${error instanceof Error ? error.message : '请重试'}`)
+	} finally {
+		if (aiRadarCheckNowBtn instanceof HTMLButtonElement) {
+			aiRadarCheckNowBtn.disabled = false
+			aiRadarCheckNowBtn.textContent = '立即检查'
 		}
 	}
 }
@@ -529,15 +770,33 @@ function setupReminderRefresh() {
 
 	if (chrome.storage?.onChanged && typeof chrome.storage.onChanged.addListener === 'function') {
 		chrome.storage.onChanged.addListener((changes, areaName) => {
-			if (areaName !== 'local' || !changes[REMINDER_STORAGE_KEY]) {
+			if (areaName !== 'local') {
 				return
 			}
 
-			state.reminderMetaByNote = buildReminderStatus(changes[REMINDER_STORAGE_KEY].newValue)
-			state.reminderAtByNote = Object.fromEntries(
-				Object.entries(state.reminderMetaByNote).map(([noteId, meta]) => [noteId, meta.triggerAt])
-			)
-			renderNotes()
+			if (changes[REMINDER_STORAGE_KEY]) {
+				state.reminderMetaByNote = buildReminderStatus(changes[REMINDER_STORAGE_KEY].newValue)
+				state.reminderAtByNote = Object.fromEntries(
+					Object.entries(state.reminderMetaByNote).map(([noteId, meta]) => [noteId, meta.triggerAt])
+				)
+				renderNotes()
+			}
+
+			if (changes[AI_RADAR_STATE_KEY]) {
+				const radarState = changes[AI_RADAR_STATE_KEY].newValue
+				state.aiRadarState = radarState && typeof radarState === 'object'
+					? {
+						sources: radarState.sources && typeof radarState.sources === 'object' ? radarState.sources : {},
+						updatedAt: Number.isFinite(radarState.updatedAt) ? radarState.updatedAt : 0,
+						lastCheckedAt: Number.isFinite(radarState.lastCheckedAt) ? radarState.lastCheckedAt : 0
+					}
+					: {
+						sources: {},
+						updatedAt: 0,
+						lastCheckedAt: 0
+					}
+				renderAiRadarStatus()
+			}
 		})
 	}
 }
@@ -1187,9 +1446,12 @@ async function init() {
 	await loadRecords()
 	await loadNotes()
 	await loadReminderStatus()
+	await loadAiRadarState()
+	await syncAiRadarConfig()
 	setupReminderRefresh()
 	render()
 	renderNotes()
+	renderAiRadarStatus()
 
 	const onSearchInput = debounce((event) => {
 		const target = event.target
@@ -1218,6 +1480,16 @@ async function init() {
 					showToast('导出失败，请重试')
 				})
 		})
+	}
+	if (aiRadarCheckNowBtn) {
+		aiRadarCheckNowBtn.addEventListener('click', () => {
+			checkAiRadarNow().catch((error) => {
+				showErrorToast(`AI 雷达检查失败：${error instanceof Error ? error.message : '请重试'}`)
+			})
+		})
+	}
+	if (aiRadarSourcesElement) {
+		aiRadarSourcesElement.addEventListener('click', onAiRadarSourceClick)
 	}
 	noteListElement.addEventListener('click', (event) => {
 		onNoteListClick(event).catch((error) => {
