@@ -9,26 +9,14 @@
   <body>
     <div id="app">
       <div class="tabs" role="tablist" aria-label="功能切换">
-        <button id="tabClipboard" class="tab-btn active" type="button" role="tab" aria-selected="true" aria-controls="panelClipboard" data-tab="clipboard">剪贴板</button>
+        <button id="tabTools" class="tab-btn active" type="button" role="tab" aria-selected="true" aria-controls="panelTools" data-tab="tools">小工具</button>
         <button id="tabNotes" class="tab-btn" type="button" role="tab" aria-selected="false" aria-controls="panelNotes" data-tab="notes">记事本</button>
       </div>
 
-      <section id="panelClipboard" class="tab-panel active" role="tabpanel" aria-labelledby="tabClipboard">
-        <div class="top-actions">
-          <button id="openStandaloneBtn" class="open-project-btn" type="button">新标签打开</button>
-          <button id="exportDataBtn" class="open-project-btn" type="button">导出数据</button>
-          <button id="openProjectBtn" class="open-project-btn" type="button">打开项目</button>
+      <section id="panelTools" class="tab-panel active" role="tabpanel" aria-labelledby="tabTools">
+        <div class="tools-container">
+          <!-- 小工具将在这里添加 -->
         </div>
-        <div id="aiRadarCard" class="ai-radar-card" aria-live="polite">
-          <div class="ai-radar-header">
-            <strong>AI 雷达</strong>
-            <button id="aiRadarCheckNowBtn" class="ai-radar-check-btn" type="button">立即检查</button>
-          </div>
-          <div id="aiRadarSummary" class="ai-radar-summary">加载中...</div>
-          <div id="aiRadarSources" class="ai-radar-sources"></div>
-        </div>
-        <input id="searchInput" type="text" placeholder="搜索剪贴内容..." autocomplete="off" />
-        <div id="list"></div>
       </section>
 
       <section id="panelNotes" class="tab-panel" role="tabpanel" aria-labelledby="tabNotes" hidden>
@@ -41,6 +29,13 @@
 
       <div id="toast" aria-live="polite"></div>
     </div>
+    <!-- 工具系统核心脚本 -->
+    <script src="tools/base-tool.js"></script>
+    <script src="tools/tools-manager.js"></script>
+    <!-- 工具脚本 -->
+    <script src="tools/example-tool.js"></script>
+    <script src="tools/token-assistor-tool.js"></script>
+    <!-- 主程序脚本 -->
     <script src="config.js"></script>
     <script src="popup.js"></script>
   </body>

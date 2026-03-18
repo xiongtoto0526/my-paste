@@ -1,111 +1,28 @@
-const STORAGE_KEY = 'records'
 const NOTE_STORAGE_KEY = 'notes'
 const REMINDER_STORAGE_KEY = 'noteReminders'
-const AI_RADAR_CONFIG_KEY = 'aiRadarConfig'
-const AI_RADAR_STATE_KEY = 'aiRadarState'
 const REMINDER_ALARM_PREFIX = 'note-reminder-'
 const CREATE_REMINDER_MESSAGE_TYPE = 'MY_PASTE_CREATE_REMINDER'
-const CHECK_AI_RADAR_NOW_MESSAGE_TYPE = 'MY_PASTE_AI_RADAR_CHECK_NOW'
-const UPDATE_AI_RADAR_CONFIG_MESSAGE_TYPE = 'MY_PASTE_AI_RADAR_UPDATE_CONFIG'
-const TAG_COLORS = {
-	slate: 'tag-slate',
-	blue: 'tag-blue',
-	green: 'tag-green',
-	amber: 'tag-amber',
-	red: 'tag-red',
-	purple: 'tag-purple'
-}
-
-const DEFAULT_CONFIG = {
-	quickActions: {
-		openProject: {
-			enabled: false,
-			label: '打开项目',
-			path: ''
-		}
-	},
-	sort: {
-		pinnedDomains: []
-	},
-	filter: {
-		hiddenDomains: []
-	},
-	tags: {
-		domainTags: {}
-	},
-	aiRadar: {
-		enabled: true,
-		intervalMinutes: 30,
-		sources: [
-			{
-				id: 'copilot',
-				name: 'GitHub Copilot',
-					type: 'rss',
-				feedUrl: 'https://github.blog/changelog/label/copilot/feed/',
-					pageUrl: 'https://github.blog/changelog/label/copilot',
-				enabled: true
-			},
-			{
-				id: 'cursor',
-				name: 'Cursor',
-					type: 'rss',
-				feedUrl: '',
-				enabled: false
-			},
-			{
-				id: 'claude',
-				name: 'Claude AI',
-					type: 'rss',
-				feedUrl: '',
-				enabled: false
-			},
-			{
-				id: 'gemini',
-				name: 'Google Gemini',
-					type: 'html',
-					pageUrl: 'https://ai.google.dev/gemini-api/docs/changelog',
-					enabled: true
-			}
-		]
-	}
-}
 
 const state = {
-	recordsByDomain: {},
 	notes: [],
-	query: '',
-	activeTab: 'clipboard',
+	activeTab: 'notes',
 	editingNoteId: '',
 	remindingNoteId: '',
 	reminderUnitByNote: {},
 	reminderMetaByNote: {},
-	reminderAtByNote: {},
-	aiRadarState: {
-		sources: {},
-		updatedAt: 0,
-		lastCheckedAt: 0
-	},
-	config: DEFAULT_CONFIG
+	reminderAtByNote: {}
 }
 
 let reminderTicker = null
 
-const tabClipboard = document.getElementById('tabClipboard')
+const tabTools = document.getElementById('tabTools')
 const tabNotes = document.getElementById('tabNotes')
-const panelClipboard = document.getElementById('panelClipboard')
+const panelTools = document.getElementById('panelTools')
 const panelNotes = document.getElementById('panelNotes')
-const searchInput = document.getElementById('searchInput')
-const listElement = document.getElementById('list')
 const noteInput = document.getElementById('noteInput')
 const addNoteBtn = document.getElementById('addNoteBtn')
 const noteListElement = document.getElementById('noteList')
 const toastElement = document.getElementById('toast')
-const openStandaloneBtn = document.getElementById('openStandaloneBtn')
-const exportDataBtn = document.getElementById('exportDataBtn')
-const openProjectBtn = document.getElementById('openProjectBtn')
-const aiRadarSummaryElement = document.getElementById('aiRadarSummary')
-const aiRadarSourcesElement = document.getElementById('aiRadarSources')
-const aiRadarCheckNowBtn = document.getElementById('aiRadarCheckNowBtn')
 
 function getQueryParam(name) {
 	const params = new URLSearchParams(window.location.search)
@@ -127,10 +44,6 @@ function escapeHtml(text) {
 
 function formatTime(timestamp) {
 	return new Date(timestamp).toLocaleString()
-}
-
-function formatTimeOrFallback(timestamp, fallback = '未检查') {
-	return Number.isFinite(timestamp) && timestamp > 0 ? formatTime(timestamp) : fallback
 }
 
 function debounce(fn, wait) {
@@ -177,427 +90,6 @@ function formatReminderError(error) {
 	}
 
 	return `设置提醒失败：${message}`
-}
-
-function formatExportTimestamp(date) {
-	const year = String(date.getFullYear())
-	const month = String(date.getMonth() + 1).padStart(2, '0')
-	const day = String(date.getDate()).padStart(2, '0')
-	const hour = String(date.getHours()).padStart(2, '0')
-	const minute = String(date.getMinutes()).padStart(2, '0')
-	const second = String(date.getSeconds()).padStart(2, '0')
-
-	return `${year}${month}${day}-${hour}${minute}${second}`
-}
-
-function triggerDownload(filename, content) {
-	const blob = new Blob([content], { type: 'application/json;charset=utf-8' })
-	const objectUrl = URL.createObjectURL(blob)
-	const anchor = document.createElement('a')
-	anchor.href = objectUrl
-	anchor.download = filename
-	document.body.appendChild(anchor)
-	anchor.click()
-	anchor.remove()
-	URL.revokeObjectURL(objectUrl)
-}
-
-async function exportAllData() {
-	const data = await chrome.storage.local.get([STORAGE_KEY, NOTE_STORAGE_KEY])
-	const payload = {
-		exportedAt: new Date().toISOString(),
-		records: normalizeRecordsByDomain(data[STORAGE_KEY] || state.recordsByDomain),
-		notes: normalizeNotes(data[NOTE_STORAGE_KEY] || state.notes)
-	}
-	const json = JSON.stringify(payload, null, 2)
-	const filename = `my-paste-export-${formatExportTimestamp(new Date())}.json`
-
-	triggerDownload(filename, json)
-}
-
-function normalizeTagColor(color) {
-	return TAG_COLORS[color] ? color : 'blue'
-}
-
-function normalizeDomainTags(rawDomainTags) {
-	if (!rawDomainTags || typeof rawDomainTags !== 'object') {
-		return {}
-	}
-
-	const normalized = {}
-
-	Object.entries(rawDomainTags).forEach(([domain, tagConfig]) => {
-		if (typeof domain !== 'string' || !domain.trim()) {
-			return
-		}
-
-		if (typeof tagConfig === 'string') {
-			const text = tagConfig.trim()
-			if (!text) {
-				return
-			}
-
-			normalized[domain] = { text, color: 'blue' }
-			return
-		}
-
-		if (!tagConfig || typeof tagConfig !== 'object') {
-			return
-		}
-
-		const text = typeof tagConfig.text === 'string' ? tagConfig.text.trim() : ''
-		if (!text) {
-			return
-		}
-
-		const color = normalizeTagColor(typeof tagConfig.color === 'string' ? tagConfig.color.trim() : '')
-		normalized[domain] = { text, color }
-	})
-
-	return normalized
-}
-
-function normalizeAiRadarSources(rawSources) {
-	const inputSources = Array.isArray(rawSources) ? rawSources : DEFAULT_CONFIG.aiRadar.sources
-	return inputSources
-		.map((source) => {
-			if (!source || typeof source !== 'object') {
-				return null
-			}
-
-			const id = typeof source.id === 'string' ? source.id.trim().toLowerCase() : ''
-			if (!id) {
-				return null
-			}
-
-			return {
-				id,
-				name: typeof source.name === 'string' && source.name.trim() ? source.name.trim() : id,
-					type: source.type === 'html' ? 'html' : 'rss',
-				feedUrl: typeof source.feedUrl === 'string' ? source.feedUrl.trim() : '',
-					pageUrl: typeof source.pageUrl === 'string' ? source.pageUrl.trim() : '',
-				enabled: Boolean(source.enabled)
-			}
-		})
-		.filter(Boolean)
-}
-
-function getAiRadarSourceTargetUrl(source) {
-	if (!source || typeof source !== 'object') {
-		return ''
-	}
-
-	const pageUrl = typeof source.pageUrl === 'string' ? source.pageUrl.trim() : ''
-	if (pageUrl) {
-		return pageUrl
-	}
-
-	const feedUrl = typeof source.feedUrl === 'string' ? source.feedUrl.trim() : ''
-	if (!feedUrl) {
-		return ''
-	}
-
-	return feedUrl.replace(/\/feed\/?$/i, '')
-}
-
-function openAiRadarSource(url) {
-	if (!url) {
-		showToast('未配置跳转地址')
-		return
-	}
-
-	if (chrome.tabs && typeof chrome.tabs.create === 'function') {
-		chrome.tabs.create({ url })
-		return
-	}
-
-	window.open(url, '_blank')
-}
-
-function onAiRadarSourceClick(event) {
-	const target = event.target
-	if (!(target instanceof HTMLElement)) {
-		return
-	}
-
-	const sourceElement = target.closest('[data-ai-radar-url]')
-	if (!(sourceElement instanceof HTMLElement)) {
-		return
-	}
-
-	event.preventDefault()
-	const url = sourceElement.dataset.aiRadarUrl || ''
-	openAiRadarSource(url)
-}
-
-function getConfig() {
-	const globalConfig = window.APP_CONFIG || {}
-	const openProjectEnabled = Boolean(globalConfig?.quickActions?.openProject?.enabled)
-	const openProjectLabel =
-		typeof globalConfig?.quickActions?.openProject?.label === 'string' &&
-		globalConfig.quickActions.openProject.label.trim()
-			? globalConfig.quickActions.openProject.label.trim()
-			: DEFAULT_CONFIG.quickActions.openProject.label
-	const openProjectPath =
-		typeof globalConfig?.quickActions?.openProject?.path === 'string'
-			? globalConfig.quickActions.openProject.path.trim()
-			: ''
-	const pinnedDomains = Array.isArray(globalConfig?.sort?.pinnedDomains)
-		? globalConfig.sort.pinnedDomains.filter((item) => typeof item === 'string' && item.trim())
-		: []
-	const hiddenDomains = Array.isArray(globalConfig?.filter?.hiddenDomains)
-		? globalConfig.filter.hiddenDomains.filter((item) => typeof item === 'string' && item.trim())
-		: []
-	const domainTags = normalizeDomainTags(globalConfig?.tags?.domainTags)
-	const aiRadarEnabled =
-		typeof globalConfig?.aiRadar?.enabled === 'boolean'
-			? globalConfig.aiRadar.enabled
-			: DEFAULT_CONFIG.aiRadar.enabled
-	const aiRadarIntervalInput = Number.parseInt(globalConfig?.aiRadar?.intervalMinutes, 10)
-	const aiRadarIntervalMinutes = Number.isFinite(aiRadarIntervalInput)
-		? Math.min(720, Math.max(5, aiRadarIntervalInput))
-		: DEFAULT_CONFIG.aiRadar.intervalMinutes
-	const aiRadarSources = normalizeAiRadarSources(globalConfig?.aiRadar?.sources)
-
-	return {
-		quickActions: {
-			openProject: {
-				enabled: openProjectEnabled,
-				label: openProjectLabel,
-				path: openProjectPath
-			}
-		},
-		sort: {
-			pinnedDomains
-		},
-		filter: {
-			hiddenDomains
-		},
-		tags: {
-			domainTags
-		},
-		aiRadar: {
-			enabled: aiRadarEnabled,
-			intervalMinutes: aiRadarIntervalMinutes,
-			sources: aiRadarSources
-		}
-	}
-}
-
-function renderAiRadarStatus() {
-	if (!(aiRadarSummaryElement instanceof HTMLElement) || !(aiRadarSourcesElement instanceof HTMLElement)) {
-		return
-	}
-
-	const radarConfig = state.config.aiRadar
-	if (!radarConfig.enabled) {
-		aiRadarSummaryElement.textContent = '已关闭'
-		aiRadarSourcesElement.innerHTML = ''
-		return
-	}
-
-	const sourceStateMap = state.aiRadarState?.sources && typeof state.aiRadarState.sources === 'object' ? state.aiRadarState.sources : {}
-	const latestCheckedAt = Object.values(sourceStateMap).reduce((max, sourceState) => {
-		const value = Number.isFinite(sourceState?.lastCheckedAt) ? sourceState.lastCheckedAt : 0
-		return Math.max(max, value)
-	}, 0)
-
-	aiRadarSummaryElement.textContent = `间隔 ${radarConfig.intervalMinutes} 分钟，最近检查：${formatTimeOrFallback(latestCheckedAt)}`
-
-	const sourceItems = radarConfig.sources
-		.filter((source) => source.enabled)
-		.map((source) => {
-			const sourceState = sourceStateMap[source.id] || {}
-				const sourceTargetUrl = getAiRadarSourceTargetUrl(source)
-			const hasError = typeof sourceState.lastError === 'string' && sourceState.lastError.trim()
-			const title = hasError
-				? `${source.name}: 失败`
-				: sourceState.lastSeenTitle
-					? `${source.name}: ${sourceState.lastSeenTitle}`
-					: `${source.name}: 暂无记录`
-			const className = hasError ? 'ai-radar-source-item error' : 'ai-radar-source-item'
-				const safeUrl = escapeHtml(sourceTargetUrl)
-				return `<button type="button" class="${className}" data-ai-radar-url="${safeUrl}" title="${escapeHtml(title)}">${escapeHtml(source.name)}</button>`
-		})
-
-	aiRadarSourcesElement.innerHTML = sourceItems.length > 0 ? sourceItems.join('') : '<span class="ai-radar-source-item">暂无启用源</span>'
-}
-
-async function loadAiRadarState() {
-	const data = await chrome.storage.local.get(AI_RADAR_STATE_KEY)
-	const radarState = data[AI_RADAR_STATE_KEY]
-	state.aiRadarState = radarState && typeof radarState === 'object'
-		? {
-			sources: radarState.sources && typeof radarState.sources === 'object' ? radarState.sources : {},
-			updatedAt: Number.isFinite(radarState.updatedAt) ? radarState.updatedAt : 0,
-			lastCheckedAt: Number.isFinite(radarState.lastCheckedAt) ? radarState.lastCheckedAt : 0
-		}
-		: {
-			sources: {},
-			updatedAt: 0,
-			lastCheckedAt: 0
-		}
-}
-
-async function syncAiRadarConfig() {
-	if (typeof chrome.runtime?.sendMessage !== 'function') {
-		return
-	}
-
-	try {
-		await chrome.runtime.sendMessage({
-			type: UPDATE_AI_RADAR_CONFIG_MESSAGE_TYPE,
-			config: state.config.aiRadar
-		})
-	} catch (error) {
-		console.error('[MyPaste] sync ai radar config failed', error)
-	}
-}
-
-async function checkAiRadarNow() {
-	if (typeof chrome.runtime?.sendMessage !== 'function') {
-		showToast('当前环境不支持立即检查')
-		return
-	}
-
-	if (aiRadarCheckNowBtn instanceof HTMLButtonElement) {
-		aiRadarCheckNowBtn.disabled = true
-		aiRadarCheckNowBtn.textContent = '检查中...'
-	}
-
-	try {
-		const result = await chrome.runtime.sendMessage({
-			type: CHECK_AI_RADAR_NOW_MESSAGE_TYPE
-		})
-
-		if (result?.ok === false) {
-			throw new Error(result.error || 'AI 雷达检查失败')
-		}
-
-		await loadAiRadarState()
-		renderAiRadarStatus()
-		showToast('AI 雷达检查完成')
-	} catch (error) {
-		showErrorToast(`AI 雷达检查失败：${error instanceof Error ? error.message : '请重试'}`)
-	} finally {
-		if (aiRadarCheckNowBtn instanceof HTMLButtonElement) {
-			aiRadarCheckNowBtn.disabled = false
-			aiRadarCheckNowBtn.textContent = '立即检查'
-		}
-	}
-}
-
-function toVscodeFileUrl(path) {
-	if (!path) {
-		return ''
-	}
-
-	const normalizedPath = path.startsWith('/') ? path : `/${path}`
-	return `vscode://file${encodeURI(normalizedPath)}`
-}
-
-function setupQuickActions() {
-	if (openStandaloneBtn) {
-		if (isStandaloneView()) {
-			openStandaloneBtn.style.display = 'none'
-		} else {
-			openStandaloneBtn.style.display = 'inline-flex'
-			openStandaloneBtn.addEventListener('click', () => {
-				const baseUrl = chrome.runtime.getURL('popup.html')
-				const targetUrl = `${baseUrl}?mode=tab&tab=${encodeURIComponent(state.activeTab)}`
-
-				if (chrome.tabs && typeof chrome.tabs.create === 'function') {
-					chrome.tabs.create({ url: targetUrl })
-				} else {
-					window.open(targetUrl, '_blank')
-				}
-			})
-		}
-	}
-
-	if (!openProjectBtn) {
-		return
-	}
-
-	const openProjectConfig = state.config.quickActions.openProject
-	openProjectBtn.textContent = openProjectConfig.label
-
-	if (!openProjectConfig.enabled || !openProjectConfig.path) {
-		openProjectBtn.style.display = 'none'
-		return
-	}
-
-	openProjectBtn.style.display = 'inline-flex'
-	openProjectBtn.addEventListener('click', () => {
-		const deepLink = toVscodeFileUrl(openProjectConfig.path)
-		if (!deepLink) {
-			showToast('项目路径未配置')
-			return
-		}
-
-		try {
-			window.open(deepLink, '_blank')
-			showToast('已尝试打开 VS Code 项目')
-		} catch (_error) {
-			showToast('打开失败，请检查 VS Code 协议')
-		}
-	})
-}
-
-function extractHost(url) {
-	try {
-		return new URL(url).host
-	} catch (_error) {
-		return ''
-	}
-}
-
-function normalizeDomain(record) {
-	const hostFromUrl = extractHost(record.url)
-	if (hostFromUrl) {
-		return hostFromUrl
-	}
-
-	return record.domain || 'unknown'
-}
-
-function normalizeRecordsByDomain(recordsByDomain) {
-	const normalized = {}
-
-	Object.values(recordsByDomain).forEach((records) => {
-		if (!Array.isArray(records)) {
-			return
-		}
-
-		records.forEach((record) => {
-			const domain = normalizeDomain(record)
-			const nextRecord = {
-				...record,
-				domain
-			}
-
-			if (!Array.isArray(normalized[domain])) {
-				normalized[domain] = []
-			}
-
-			normalized[domain].push(nextRecord)
-		})
-	})
-
-	Object.keys(normalized).forEach((domain) => {
-		normalized[domain] = normalized[domain].sort((a, b) => b.createdAt - a.createdAt)
-	})
-
-	return normalized
-}
-
-async function loadRecords() {
-	const data = await chrome.storage.local.get(STORAGE_KEY)
-	state.recordsByDomain = normalizeRecordsByDomain(data[STORAGE_KEY] || {})
-}
-
-async function persistRecords() {
-	await chrome.storage.local.set({ [STORAGE_KEY]: state.recordsByDomain })
 }
 
 function normalizeNotes(notes) {
@@ -781,22 +273,6 @@ function setupReminderRefresh() {
 				)
 				renderNotes()
 			}
-
-			if (changes[AI_RADAR_STATE_KEY]) {
-				const radarState = changes[AI_RADAR_STATE_KEY].newValue
-				state.aiRadarState = radarState && typeof radarState === 'object'
-					? {
-						sources: radarState.sources && typeof radarState.sources === 'object' ? radarState.sources : {},
-						updatedAt: Number.isFinite(radarState.updatedAt) ? radarState.updatedAt : 0,
-						lastCheckedAt: Number.isFinite(radarState.lastCheckedAt) ? radarState.lastCheckedAt : 0
-					}
-					: {
-						sources: {},
-						updatedAt: 0,
-						lastCheckedAt: 0
-					}
-				renderAiRadarStatus()
-			}
 		})
 	}
 }
@@ -930,88 +406,6 @@ async function createNoteReminder(noteId, reminderDraft) {
 	state.remindingNoteId = ''
 	renderNotes()
 	showToast(`已设置 ${reminderDraft.displayValue} ${reminderDraft.unitLabel} 后提醒`)
-}
-
-function getFilteredGroups() {
-	const pinnedDomains = state.config.sort.pinnedDomains
-	const hiddenDomains = state.config.filter.hiddenDomains
-	const hiddenSet = new Set(hiddenDomains)
-	const pinnedOrder = new Map(pinnedDomains.map((domain, index) => [domain, index]))
-
-	const groups = Object.entries(state.recordsByDomain)
-		.filter(([domain]) => !hiddenSet.has(domain))
-		.map(([domain, records]) => {
-			const normalized = Array.isArray(records) ? records : []
-			const sorted = [...normalized].sort((a, b) => b.createdAt - a.createdAt)
-
-			if (!state.query) {
-				return { domain, records: sorted }
-			}
-
-			const query = state.query.toLowerCase()
-			const filtered = sorted.filter((item) => item.content.toLowerCase().includes(query))
-			return { domain, records: filtered }
-		})
-		.filter((group) => group.records.length > 0)
-
-	groups.sort((a, b) => {
-		const rankA = pinnedOrder.has(a.domain) ? pinnedOrder.get(a.domain) : Number.POSITIVE_INFINITY
-		const rankB = pinnedOrder.has(b.domain) ? pinnedOrder.get(b.domain) : Number.POSITIVE_INFINITY
-
-		if (rankA !== rankB) {
-			return rankA - rankB
-		}
-
-		return b.records[0].createdAt - a.records[0].createdAt
-	})
-
-	return groups
-}
-
-function render() {
-	const groups = getFilteredGroups()
-
-	if (groups.length === 0) {
-		listElement.innerHTML = '<div class="empty">暂无记录</div>'
-		return
-	}
-
-	const html = groups
-		.map((group) => {
-			const tagConfig = state.config.tags.domainTags[group.domain]
-			const tagHtml = tagConfig
-				? `<span class="domain-tag ${TAG_COLORS[tagConfig.color]}">${escapeHtml(tagConfig.text)}</span>`
-				: ''
-			const recordsHtml = group.records
-				.map((record) => {
-					const preview = escapeHtml(record.content)
-					const meta = `${escapeHtml(formatTime(record.createdAt))} · ${escapeHtml(record.url)}`
-
-					return `
-						<li class="record">
-							<button class="copy-btn" data-action="copy" data-id="${record.id}" data-domain="${group.domain}">
-								<span class="content">${preview}</span>
-								<span class="meta">${meta}</span>
-							</button>
-							<button class="delete-btn" data-action="delete" data-id="${record.id}" data-domain="${group.domain}" aria-label="删除记录" title="删除记录">×</button>
-						</li>
-					`
-				})
-				.join('')
-
-			return `
-				<section class="group">
-					<div class="group-header">
-						<div class="domain-row">${tagHtml}<div class="domain">${escapeHtml(group.domain)}</div></div>
-						<button class="clear-btn" data-action="clear-domain" data-domain="${group.domain}">清空</button>
-					</div>
-					<ul class="records">${recordsHtml}</ul>
-				</section>
-			`
-		})
-		.join('')
-
-	listElement.innerHTML = html
 }
 
 function renderNotes() {
@@ -1306,37 +700,94 @@ async function onNoteListFocusOut(event) {
 }
 
 function setActiveTab(nextTab) {
-	state.activeTab = nextTab === 'notes' ? 'notes' : 'clipboard'
+	state.activeTab = nextTab === 'notes' ? 'notes' : 'tools'
 
-	const isClipboard = state.activeTab === 'clipboard'
+	const isTools = state.activeTab === 'tools'
 
-	if (tabClipboard) {
-		tabClipboard.classList.toggle('active', isClipboard)
-		tabClipboard.setAttribute('aria-selected', isClipboard ? 'true' : 'false')
+	if (tabTools) {
+		tabTools.classList.toggle('active', isTools)
+		tabTools.setAttribute('aria-selected', isTools ? 'true' : 'false')
 	}
 
 	if (tabNotes) {
-		tabNotes.classList.toggle('active', !isClipboard)
-		tabNotes.setAttribute('aria-selected', !isClipboard ? 'true' : 'false')
+		tabNotes.classList.toggle('active', !isTools)
+		tabNotes.setAttribute('aria-selected', !isTools ? 'true' : 'false')
 	}
 
-	if (panelClipboard) {
-		panelClipboard.classList.toggle('active', isClipboard)
-		panelClipboard.hidden = !isClipboard
+	if (panelTools) {
+		panelTools.classList.toggle('active', isTools)
+		panelTools.hidden = !isTools
 	}
 
 	if (panelNotes) {
-		panelNotes.classList.toggle('active', !isClipboard)
-		panelNotes.hidden = isClipboard
+		panelNotes.classList.toggle('active', !isTools)
+		panelNotes.hidden = isTools
 	}
+}
+
+let toolsManager = null
+
+/**
+ * 初始化工具系统
+ */
+function setupToolsSystem() {
+	const toolsContainer = document.querySelector('.tools-container')
+	if (!toolsContainer) {
+		console.error('[MyPaste] Tools container not found')
+		return
+	}
+
+	// 创建工具管理器
+	toolsManager = new ToolsManager(toolsContainer, window.APP_CONFIG?.tools || {})
+
+	// 从配置中获取启用的工具列表
+	const enabledTools = window.APP_CONFIG?.tools?.enabled || []
+	const toolDefinitions = {
+		example: {
+			toolClass: ExampleTool,
+			options: {
+				title: '示例工具'
+			}
+		},
+		'token-assistor': {
+			toolClass: typeof TokenAssistorTool === 'undefined' ? null : TokenAssistorTool,
+			options: {
+				title: 'Token Assistor'
+			}
+		}
+	}
+
+	// 按配置顺序注册工具，确保第一个启用工具会优先显示
+	enabledTools.forEach((toolId) => {
+		const def = toolDefinitions[toolId]
+		if (!def) {
+			console.warn(`[MyPaste] Unknown tool id: ${toolId}`)
+			return
+		}
+
+		if (!def.toolClass) {
+			console.error(`[MyPaste] Tool class not available: ${toolId}`)
+			return
+		}
+
+		toolsManager.registerTool(toolId, def.toolClass, def.options)
+	})
+
+	// 如果没有启用的工具，显示占位符
+	if (toolsManager.getRegisteredToolIds().length === 0) {
+		// 如果没有启用的工具，显示占位符
+		toolsContainer.innerHTML = '<div class="tool-placeholder">暂无启用的工具</div>'
+	}
+
+	console.log('[MyPaste] Tools system initialized', toolsManager.getStatus())
 }
 
 function setupTabs() {
 	const queryTab = getQueryParam('tab')
-	const initialTab = queryTab === 'notes' ? 'notes' : 'clipboard'
+	const initialTab = queryTab === 'notes' ? 'notes' : 'tools'
 
-	if (tabClipboard) {
-		tabClipboard.addEventListener('click', () => setActiveTab('clipboard'))
+	if (tabTools) {
+		tabTools.addEventListener('click', () => setActiveTab('tools'))
 	}
 
 	if (tabNotes) {
@@ -1368,129 +819,23 @@ async function submitNote() {
 	showToast('便签已添加')
 }
 
-async function copyText(content) {
-	await navigator.clipboard.writeText(content)
-}
-
-async function onListClick(event) {
-	const target = event.target
-	if (!(target instanceof HTMLElement)) {
-		return
-	}
-
-	const actionTarget = target.closest('[data-action]')
-	if (!(actionTarget instanceof HTMLElement)) {
-		return
-	}
-
-	const action = actionTarget.dataset.action
-	const domain = actionTarget.dataset.domain
-	const id = actionTarget.dataset.id
-
-	if (!domain) {
-		return
-	}
-
-	if (action === 'clear-domain') {
-		delete state.recordsByDomain[domain]
-		await persistRecords()
-		render()
-		showToast('已清空该网站记录')
-		return
-	}
-
-	if (!id) {
-		return
-	}
-
-	const list = Array.isArray(state.recordsByDomain[domain]) ? state.recordsByDomain[domain] : []
-	const record = list.find((item) => item.id === id)
-
-	if (!record) {
-		return
-	}
-
-	if (action === 'copy') {
-		try {
-			await copyText(record.content)
-			showToast('已复制到剪贴板')
-		} catch (_error) {
-			showToast('复制失败，请重试')
-		}
-		return
-	}
-
-	if (action === 'delete') {
-		const nextList = list.filter((item) => item.id !== id)
-
-		if (nextList.length === 0) {
-			delete state.recordsByDomain[domain]
-		} else {
-			state.recordsByDomain[domain] = nextList
-		}
-
-		await persistRecords()
-		render()
-		showToast('记录已删除')
-	}
-}
-
 async function init() {
 	if (isStandaloneView()) {
 		document.body.classList.add('standalone-view')
 	}
 
-	state.config = getConfig()
-	setupQuickActions()
 	setupTabs()
-	await loadRecords()
+	setupToolsSystem()
 	await loadNotes()
 	await loadReminderStatus()
-	await loadAiRadarState()
-	await syncAiRadarConfig()
 	setupReminderRefresh()
-	render()
 	renderNotes()
-	renderAiRadarStatus()
 
-	const onSearchInput = debounce((event) => {
-		const target = event.target
-		if (!(target instanceof HTMLInputElement)) {
-			return
-		}
-
-		state.query = target.value.trim()
-		render()
-	}, 200)
-
-	searchInput.addEventListener('input', onSearchInput)
-	listElement.addEventListener('click', onListClick)
 	addNoteBtn.addEventListener('click', () => {
 		submitNote().catch(() => {
 			showErrorToast('保存便签失败，请重试')
 		})
 	})
-	if (exportDataBtn) {
-		exportDataBtn.addEventListener('click', () => {
-			exportAllData()
-				.then(() => {
-					showToast('数据已导出')
-				})
-				.catch(() => {
-					showToast('导出失败，请重试')
-				})
-		})
-	}
-	if (aiRadarCheckNowBtn) {
-		aiRadarCheckNowBtn.addEventListener('click', () => {
-			checkAiRadarNow().catch((error) => {
-				showErrorToast(`AI 雷达检查失败：${error instanceof Error ? error.message : '请重试'}`)
-			})
-		})
-	}
-	if (aiRadarSourcesElement) {
-		aiRadarSourcesElement.addEventListener('click', onAiRadarSourceClick)
-	}
 	noteListElement.addEventListener('click', (event) => {
 		onNoteListClick(event).catch((error) => {
 			showErrorToast(formatReminderError(error))
@@ -1520,5 +865,5 @@ async function init() {
 
 init().catch((error) => {
 	console.error('[MyPaste] popup init failed', error)
-	listElement.innerHTML = '<div class="empty">加载失败，请重试</div>'
+	toastElement.innerHTML = '<div class="error">加载失败，请重试</div>'
 })

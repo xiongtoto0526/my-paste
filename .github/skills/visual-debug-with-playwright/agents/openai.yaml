@@ -1,0 +1,4 @@
+interface:
+  display_name: "Visual Debug with Playwright"
+  short_description: "Open pages with a durable Alt-click inspector"
+  default_prompt: "Use $visual-debug-with-playwright to open a URL in Playwright MCP and attach the durable Alt-hover inspector."

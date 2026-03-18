@@ -69,3 +69,21 @@ window.APP_CONFIG = {
 - 查看 background 日志：`chrome://extensions/` -> 本扩展 -> `service worker` -> Inspect
 - 查看 content script 日志：在目标网页打开 DevTools Console
 - 查看存储数据：DevTools -> Application -> Storage -> Extension Storage
+
+## Copilot 可视化调试 Skill
+
+- 已接入 Skill：`.github/skills/visual-debug-with-playwright/SKILL.md`
+- 用途：在 Playwright MCP 浏览器里通过 `Alt` 悬停/点击可视化定位元素，并在页面内提交修改反馈给 Copilot。
+
+### 前置条件
+
+1. 在 VS Code 中启用可用的 Playwright MCP Server。
+2. 使用 Copilot 的 Agent 模式（Ask 模式无法执行 MCP 浏览器工具）。
+
+### 使用方式
+
+1. 在 Chat 中发起：`/visual-debug-with-playwright`，并说明目标 URL。
+2. 等待 Agent 打开页面并注入 inspector。
+3. 在页面中按住 `Alt` 悬停元素；`Alt + Click` 选中元素并打开反馈面板。
+4. 填写改动需求并提交。
+5. 回到 Chat 让 Copilot `check feedback`，Agent 会读取提交并执行代码修改。
