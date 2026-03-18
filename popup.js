@@ -777,6 +777,15 @@ function setupToolsSystem() {
 	if (toolsManager.getRegisteredToolIds().length === 0) {
 		// 如果没有启用的工具，显示占位符
 		toolsContainer.innerHTML = '<div class="tool-placeholder">暂无启用的工具</div>'
+	} else {
+		const registeredToolIds = toolsManager.getRegisteredToolIds()
+		const defaultToolId = registeredToolIds.includes('token-assistor')
+			? 'token-assistor'
+			: registeredToolIds[0]
+
+		toolsManager.showTool(defaultToolId).catch((error) => {
+			console.error(`[MyPaste] Failed to show default tool ${defaultToolId}`, error)
+		})
 	}
 
 	console.log('[MyPaste] Tools system initialized', toolsManager.getStatus())

@@ -422,8 +422,28 @@ body.standalone-view #app {
 
 .token-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.token-group {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
+}
+
+.token-group-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.token-divider {
+  background: #e5e7eb;
+  border-radius: 999px;
 }
 
 .token-btn {
@@ -448,12 +468,4 @@ body.standalone-view #app {
 .token-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.token-dev-btn {
-  border-left: 3px solid #f59e0b;
-}
-
-.token-prod-btn {
-  border-left: 3px solid #10b981;
 }

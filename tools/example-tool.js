@@ -26,7 +26,6 @@ class ExampleTool extends BaseTool {
 	render() {
 		return `
 			<div class="tool-example">
-				<div class="tool-title">${this.options.title || '示例工具'}</div>
 				<div class="tool-description">
 					<p>这是一个示例工具，展示如何创建自定义工具。</p>
 					<p>你可以将此文件复制为新工具的模板。</p>

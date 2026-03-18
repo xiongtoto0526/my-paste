@@ -32,17 +32,25 @@ My Paste 是一个本地 Chrome 扩展，用于：
 ### 2.3 小工具容器（Tab: 小工具）
 
 - 提供可扩展的小工具容器
-- 每个工具以折叠面板展示，默认收起
+- 每个工具以折叠面板展示，默认展开首个工具（优先 `Token Assistor`）
 - 点击工具面板标题后展开，显示工具内容与操作按钮
-- 工具操作按钮按从左到右排列，每行最多 2 个
+- `Token Assistor` 按钮分为 `App` 与 `CMS` 两组
+- 每组按钮上下排列，两组之间使用竖线分隔
 - 可通过 config.js 配置工具及展示顺序
 
 ### 2.4 Token Assistor 工具
 
-- 提供两个操作按钮：`获取 Dev Token`、`获取 Prod Token`
-- 点击后调用对应环境登录接口获取 token
-- 成功后自动复制 token 到剪切板并提示成功
-- 失败时提示错误信息并更新状态
+- 提供四个操作按钮：`获取 Dev Token`、`获取 Prod Token`、`获取 CMS Dev Token`、`获取 CMS Prod Token`
+- `App` 组包含：`获取 Dev Token`、`获取 Prod Token`
+- `CMS` 组包含：`获取 Dev Token`、`获取 Prod Token`（由组标题提供 CMS 上下文）
+- 点击 `获取 Dev Token` / `获取 Prod Token` 后调用对应环境登录接口获取 token
+- 点击 `获取 CMS Dev Token` 后先检查当前激活标签页域名是否为 `https://dev.cms.litnotes.ai/`
+- 点击 `获取 CMS Prod Token` 后先检查当前激活标签页域名是否为 `https://cms.litnotes.ai/`
+- 域名匹配时，读取对应页面 `localStorage.token` 并复制到剪切板
+- 若实时读取失败，则回退使用扩展缓存的对应 CMS token（由页面 content script 同步）
+- 若域名不匹配，则提示用户先打开对应站点
+- token 获取成功后自动复制到剪切板并提示成功
+- 失败时提示错误信息
 
 ### 2.5 快捷键
 
@@ -67,7 +75,8 @@ My Paste 是一个本地 Chrome 扩展，用于：
 - 工具折叠面板列表
 - 面板标题区（工具名 + 展开/收起箭头）
 - 面板内容区（仅展开时显示）
-- 面板内按钮区按两列网格布局展示
+- 面板内容区不重复展示工具标题（避免冗余）
+- `Token Assistor` 面板内按钮区按左右两组展示，每组内部垂直排列
 
 ### 3.3 记事本页布局
 
@@ -154,6 +163,8 @@ window.APP_CONFIG = {
 
 - `storage`
 - `activeTab`
+- `tabs`
+- `scripting`
 - `alarms`
 - `notifications`
 
@@ -173,9 +184,9 @@ window.APP_CONFIG = {
 - [x] 提醒设置（小时/分钟/秒）
 - [x] 倒计时 + 已提醒/已过期状态
 - [x] 快捷键唤起扩展
-- [x] 小工具折叠面板（默认收起、点击展开）
+- [x] 小工具折叠面板（默认展开首个工具，点击可展开/收起）
 - [x] 工具按钮两列布局（每行最多 2 个）
-- [x] Token Assistor 工具（Dev/Prod token 获取与复制）
+- [x] Token Assistor 工具（Dev/Prod/CMS Dev/CMS Prod token 获取与复制）
 
 ---
 
@@ -184,7 +195,7 @@ window.APP_CONFIG = {
 ### v1.2.0
 - 小工具区域升级为折叠面板结构
 - 工具按钮布局统一为每行 2 个、从左到右排列
-- 新增 Token Assistor 工具（Dev/Prod token 获取与剪切板复制）
+- 新增 Token Assistor 工具（Dev/Prod/CMS Dev/CMS Prod token 获取与剪切板复制）
 
 ### v1.1.0
 - 移除剪贴板记录功能
