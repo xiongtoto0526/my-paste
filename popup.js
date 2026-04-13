@@ -797,12 +797,11 @@ function setupToolsSystem() {
 		toolsContainer.innerHTML = '<div class="tool-placeholder">暂无启用的工具</div>'
 	} else {
 		const registeredToolIds = toolsManager.getRegisteredToolIds()
-		const defaultToolId = registeredToolIds.includes('example')
-			? 'example'
-			: registeredToolIds[0]
 
-		toolsManager.showTool(defaultToolId).catch((error) => {
-			console.error(`[MyPaste] Failed to show default tool ${defaultToolId}`, error)
+		registeredToolIds.forEach((toolId) => {
+			toolsManager.showTool(toolId).catch((error) => {
+				console.error(`[MyPaste] Failed to show default tool ${toolId}`, error)
+			})
 		})
 	}
 
