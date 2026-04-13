@@ -17,6 +17,7 @@ let reminderTicker = null
 
 const tabTools = document.getElementById('tabTools')
 const tabNotes = document.getElementById('tabNotes')
+const openStandaloneBtn = document.getElementById('openStandaloneBtn')
 const panelTools = document.getElementById('panelTools')
 const panelNotes = document.getElementById('panelNotes')
 const noteInput = document.getElementById('noteInput')
@@ -31,6 +32,23 @@ function getQueryParam(name) {
 
 function isStandaloneView() {
 	return getQueryParam('mode') === 'tab'
+}
+
+function buildStandaloneUrl() {
+	const nextTab = state.activeTab === 'notes' ? 'notes' : 'tools'
+	const search = new URLSearchParams({ mode: 'tab', tab: nextTab })
+	return `${chrome.runtime.getURL('popup.html')}?${search.toString()}`
+}
+
+function openStandaloneTab() {
+	const url = buildStandaloneUrl()
+
+	if (chrome.tabs && typeof chrome.tabs.create === 'function') {
+		chrome.tabs.create({ url })
+		return
+	}
+
+	window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 function escapeHtml(text) {
@@ -746,7 +764,7 @@ function setupToolsSystem() {
 		example: {
 			toolClass: ExampleTool,
 			options: {
-				title: '示例工具'
+				title: 'AI咨询'
 			}
 		},
 		'token-assistor': {
@@ -779,8 +797,8 @@ function setupToolsSystem() {
 		toolsContainer.innerHTML = '<div class="tool-placeholder">暂无启用的工具</div>'
 	} else {
 		const registeredToolIds = toolsManager.getRegisteredToolIds()
-		const defaultToolId = registeredToolIds.includes('token-assistor')
-			? 'token-assistor'
+		const defaultToolId = registeredToolIds.includes('example')
+			? 'example'
 			: registeredToolIds[0]
 
 		toolsManager.showTool(defaultToolId).catch((error) => {
@@ -801,6 +819,10 @@ function setupTabs() {
 
 	if (tabNotes) {
 		tabNotes.addEventListener('click', () => setActiveTab('notes'))
+	}
+
+	if (openStandaloneBtn) {
+		openStandaloneBtn.addEventListener('click', openStandaloneTab)
 	}
 
 	setActiveTab(initialTab)

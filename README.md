@@ -70,6 +70,29 @@ window.APP_CONFIG = {
 - 查看 content script 日志：在目标网页打开 DevTools Console
 - 查看存储数据：DevTools -> Application -> Storage -> Extension Storage
 
+## 自动自检
+
+为减少手动打开浏览器排错，项目增加了两条自检命令：
+
+- `npm run check:syntax`
+   - 对仓库内所有 `.js` 文件执行 `node --check`
+   - 可提前发现语法错误（如多/少括号）
+
+- `npm run test:smoke:popup`
+   - 使用 Playwright 加载扩展并打开 `popup.html`
+   - 检查 popup 基础 DOM 是否可用，并捕获 `pageerror` 与 `console.error`
+
+- `npm run verify`
+   - 一键串行执行 `check:syntax` + `test:smoke:popup`
+   - 带阶段日志和时间戳，便于定位卡住步骤
+
+首次使用 Playwright 前请先安装：
+
+```bash
+npm install
+npx playwright install chromium
+```
+
 ## Copilot 可视化调试 Skill
 
 - 已接入 Skill：`.github/skills/visual-debug-with-playwright/SKILL.md`

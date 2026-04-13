@@ -32,10 +32,13 @@ My Paste 是一个本地 Chrome 扩展，用于：
 ### 2.3 小工具容器（Tab: 小工具）
 
 - 提供可扩展的小工具容器
-- 每个工具以折叠面板展示，默认展开首个工具（优先 `Token Assistor`）
+- 每个工具以折叠面板展示，默认展开 `AI咨询`（工具 ID: `example`）
 - 点击工具面板标题后展开，显示工具内容与操作按钮
 - `Token Assistor` 按钮分为 `App` 与 `CMS` 两组
 - 每组按钮上下排列，两组之间使用竖线分隔
+- `AI咨询` 使用与 `Token Assistor` 一致的按钮区视觉布局
+- 顶部右侧提供 `全屏查看` 图标按钮
+- 点击 `全屏查看` 后在新浏览器 Tab 打开扩展独立页面入口（`popup.html?mode=tab`）
 - 可通过 config.js 配置工具及展示顺序
 
 ### 2.4 Token Assistor 工具
@@ -52,7 +55,18 @@ My Paste 是一个本地 Chrome 扩展，用于：
 - token 获取成功后自动复制到剪切板并提示成功
 - 失败时提示错误信息
 
-### 2.5 快捷键
+### 2.5 AI咨询 工具
+
+- 使用 `example` 工具位，面板标题展示为 `AI咨询`
+- 提供按钮：`获取咨询`
+- 点击后请求：`GET https://my-ai-radar.vercel.app/history?limit=10`
+- 请求头固定携带：`x-api-key`
+- 返回结果以 list-card 形式展示关键信息（名称、发布时间、入库时间、来源链接）
+- list-card 按 `publishedAt` 倒序排列（最新在前）
+- 查询中在结果区显示菊花占位（loading card）
+- 请求失败时展示错误信息（toast + JSON 错误对象）
+
+### 2.6 快捷键
 
 - 支持 `commands._execute_action`
 - 默认：
@@ -67,6 +81,7 @@ My Paste 是一个本地 Chrome 扩展，用于：
 
 - Tab1: `小工具`（待扩展）
 - Tab2: `记事本`
+- 右上角：`全屏查看` 图标按钮（新开 tab 进入独立视图）
 - 默认进入 Tab1
 - 独立标签页模式支持通过 query 参数指定初始 tab
 
@@ -155,6 +170,8 @@ window.APP_CONFIG = {
 }
 ```
 
+说明：`example` 工具 ID 当前对应 `AI咨询` 工具实现。
+
 ---
 
 ## 7. 权限说明（Manifest V3）
@@ -187,10 +204,15 @@ window.APP_CONFIG = {
 - [x] 小工具折叠面板（默认展开首个工具，点击可展开/收起）
 - [x] 工具按钮两列布局（每行最多 2 个）
 - [x] Token Assistor 工具（Dev/Prod/CMS Dev/CMS Prod token 获取与复制）
+- [x] AI咨询 工具（获取咨询历史并展示 JSON）
 
 ---
 
 ## 10. 变更日志
+
+### v1.3.0
+- 将示例工具改造为 `AI咨询`
+- 新增 `获取咨询` 按钮，请求 AI Radar 历史接口并展示 JSON 返回
 
 ### v1.2.0
 - 小工具区域升级为折叠面板结构

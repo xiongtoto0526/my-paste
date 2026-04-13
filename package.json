@@ -1,0 +1,13 @@
+{
+  "name": "my-paste",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "check:syntax": "node other/scripts/check-js-syntax.mjs",
+    "test:smoke:popup": "node other/scripts/playwright-popup-smoke.mjs",
+    "verify": "echo \"[1/2] $(date '+%H:%M:%S') check:syntax START\" && npm run check:syntax && echo \"[1/2] $(date '+%H:%M:%S') check:syntax DONE\" && echo \"[2/2] $(date '+%H:%M:%S') test:smoke:popup START\" && npm run test:smoke:popup && echo \"[2/2] $(date '+%H:%M:%S') test:smoke:popup DONE\" && echo \"[done] $(date '+%H:%M:%S') verify ALL DONE\""
+  },
+  "devDependencies": {
+    "playwright": "^1.53.2"
+  }
+}

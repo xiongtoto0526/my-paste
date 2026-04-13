@@ -8,9 +8,12 @@
   </head>
   <body>
     <div id="app">
-      <div class="tabs" role="tablist" aria-label="功能切换">
-        <button id="tabTools" class="tab-btn active" type="button" role="tab" aria-selected="true" aria-controls="panelTools" data-tab="tools">小工具</button>
-        <button id="tabNotes" class="tab-btn" type="button" role="tab" aria-selected="false" aria-controls="panelNotes" data-tab="notes">记事本</button>
+      <div class="top-bar">
+        <div class="tabs" role="tablist" aria-label="功能切换">
+          <button id="tabTools" class="tab-btn active" type="button" role="tab" aria-selected="true" aria-controls="panelTools" data-tab="tools">小工具</button>
+          <button id="tabNotes" class="tab-btn" type="button" role="tab" aria-selected="false" aria-controls="panelNotes" data-tab="notes">记事本</button>
+        </div>
+        <button id="openStandaloneBtn" class="top-icon-btn" type="button" aria-label="全屏查看" title="全屏查看">⛶</button>
       </div>
 
       <section id="panelTools" class="tab-panel active" role="tabpanel" aria-labelledby="tabTools">
